@@ -12,7 +12,8 @@ if __name__=='__main__':
     print(returns.dtype)
     print(type(returns.values))
     print(returns.values.dtype)
-    print(entropy_rate(returns.values))
-    # need some discretisation...
+    for k in [2**j for j in [1,2,3,5,8]]:
+        print('lzma',k,entropy_rate(bytearray(discretise(returns.values, k))))
+
 
 
