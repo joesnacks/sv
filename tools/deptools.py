@@ -31,12 +31,50 @@ def discretise(x, k):
         rx = x.rank(method='max')
     else:
         rx = scipy.stats.rankdata(x, method='max')
+    rx = rx.astype(np.uint32)
     n = len(rx)
-    return((rx*k) // (n+1))
+    if k>2**16:
+        print('warning: in deptools.discretise: discretisation specifies ' +  
+        '%.0f > 2**16 states, but converted to 32 bit integer; ' % k +
+        'integer overflow')
+    return(((rx*k) // (n+1)).astype(np.uint32))
     
 if __name__=='__main__':
     # tests of entopy_rate
     print('\ntests of entropy_rate')
+    print(' byte sequence (256 states)')
+    x = bytes(os.urandom(10000))
+    print(x[:10])
+    for method in ['lzma','bz2']:
+        print(method, entropy_rate(x, method=method))
+    print(' byte sequence, 8 bit encoding [1 byte per byte; 1 bit per bit]')
+    x = bytearray(np.random.randint(0,2**8,size=10000).astype(np.uint8))
+    print(x[:12])
+    for method in ['lzma','bz2']:
+        print(method, entropy_rate(x, method=method))
+    print(' byte sequence, 16 bit encoding ' + 
+    '[.5 byte per byte; 8 bits per 16 bits]')
+    x = bytearray(np.random.randint(0,2**8,size=10000).astype(np.uint16))
+    print(x[:12])
+    for method in ['lzma','bz2']:
+        print(method, entropy_rate(x, method=method))
+    print(' byte sequence, 32 bit encoding ' + 
+    '[1 byte per 4 bytes; 8 bits per 32 bits]')
+    x = bytearray(np.random.randint(0,2**8,size=10000).astype(np.uint32))
+    print(x[:12])
+    for method in ['lzma','bz2']:
+        print(method, entropy_rate(x, method=method))
+    print(' 2**4 states, 32 bit encoding [4 bits per 32 bits]')
+    x = bytearray(np.random.randint(0,2**4,size=10000).astype(np.uint32))
+    print(x[:12])
+    for method in ['lzma','bz2']:
+        print(method, entropy_rate(x, method=method))
+    print(' 2**2 states, 32 bit encoding [2 bits per 32 bits]')
+    x = bytearray(np.random.randint(0,2**2,size=10000).astype(np.uint32))
+    print(x[:12])
+    for method in ['lzma','bz2']:
+        print(method, entropy_rate(x, method=method))
+    print(' 1 bit sequence (2 states), 32 bit encoding [1 bit per 32 bits]')
     x = bytearray(np.random.randint(0,2,size=10000).astype(np.uint32))
     print(x[:12])
     for method in ['lzma','bz2']:
@@ -55,9 +93,12 @@ if __name__=='__main__':
         print(k, discretise(x, k))
     # tests of discretise + entropy_rate
     print('\ntests of discretise + entropy_rate')
-    x = np.random.randint(0,2^8,size=100000).astype(np.uint32)
-    xb = bytearray(x)
-    print('x[0]: ',x[0],'xb[:4]: ',xb[:4],'list(xb)[:4]',list(xb)[:4])
+    x = np.random.randint(0,2**8,size=100000).astype(np.uint32)
+    print('x[:4]: ',x[:4],'xb[:4]: ',xb[:4],'list(xb)[:4]',list(xb)[:4])
     for method in ['lzma','bz2']:
-        for discretisation_level in [2**j for j in [1,2,3,5,8]]:
-            print(method,discretisation_level,entropy_rate(bytearray(discretise(x,discretisation_level))))
+        print(method,'undiscretised',entropy_rate(bytearray(x)))
+        for discretisation_level in [2**j for j in [1,2,3,5,8,17]]:
+            xd = discretise(x,discretisation_level)
+            print(method,'discretised',discretisation_level,
+            entropy_rate(bytearray(xd), method=method))
+    
