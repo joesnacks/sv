@@ -4,6 +4,9 @@ import lzma
 import bz2
 import pandas as pd
 import scipy.stats
+from statsmodels.tsa.arima_process import arma_generate_sample
+import os
+import matplotlib.pyplot as plt
 
 def entropy_rate(x, method='lzma'):
     if method=='lzma':
@@ -38,7 +41,44 @@ def discretise(x, k):
         '%.0f > 2**16 states, but converted to 32 bit integer; ' % k +
         'integer overflow')
     return(((rx*k) // (n+1)).astype(np.uint32))
-    
+
+def dependogram(x, blocksizes=None, nshuffles=100, nbins=256, plot=False, method='lzma'):
+    # test stat for dependence at or beyond m lags against m
+    # x is a scalar time series
+    # output is a named array of p-values; plot output of simulated distribution
+    # of the test stat under the null is optional
+    # method can be 'lzma' or 'bz2'
+    shuffled_entropies = {}
+    if blocksizes is None:
+        kmax = np.int(np.log10(len(x)/3))
+        blocksizes = [10**b for b in range(0,kmax,1+kmax//6)]
+        print('using default block sizes %s' % repr(blocksizes))
+    for blocksize in blocksizes:
+        print(' doing block size %s' % repr(blocksize))
+        shuffled_entropies[blocksize] = []
+        for i in range(nshuffles):
+            xs = block_shuffle(discretise(x, nbins), blocksize)
+            shuffled_entropies[blocksize].append(entropy_rate(bytearray(xs), method=method))
+    print('shuffled entropy rates:')
+    for blocksize in blocksizes:
+        print('blocksize: %.0f mean: %.4f sd: %.6f' % (blocksize,
+        np.mean(shuffled_entropies[blocksize]),
+        np.std(shuffled_entropies[blocksize])))
+    # print('x[0]: ',x[0],'xb[:4]: ',bytearray(x)[:4],'list(xb)[:4]',
+    #     list(bytearray(x))[:4])
+    unshuffled_entropy_rate = entropy_rate(bytearray(
+        discretise(x, nbins)), method=method)
+    print('unshuffled entropy rate %.4f' % unshuffled_entropy_rate)
+    teststat = pd.DataFrame(shuffled_entropies)-unshuffled_entropy_rate
+    rejections = (teststat>0).sum() / teststat.shape[0] #rejection frequencies
+    pvalues = 1-rejections
+    if plot:
+        print('pvalues:\n',pvalues)
+        teststat.boxplot()
+        plt.title('test stat for dependence at or beyond m lags against m')
+        plt.show()
+    return(pvalues)
+
 if __name__=='__main__':
     # tests of entopy_rate
     print('\ntests of entropy_rate')
@@ -92,13 +132,23 @@ if __name__=='__main__':
     for k in [1,2,3,4,12]:
         print(k, discretise(x, k))
     # tests of discretise + entropy_rate
-    print('\ntests of discretise + entropy_rate')
-    x = np.random.randint(0,2**8,size=100000).astype(np.uint32)
-    print('x[:4]: ',x[:4],'xb[:4]: ',xb[:4],'list(xb)[:4]',list(xb)[:4])
-    for method in ['lzma','bz2']:
-        print(method,'undiscretised',entropy_rate(bytearray(x)))
-        for discretisation_level in [2**j for j in [1,2,3,5,8,17]]:
-            xd = discretise(x,discretisation_level)
-            print(method,'discretised',discretisation_level,
-            entropy_rate(bytearray(xd), method=method))
-    
+    # print('\ntests of discretise + entropy_rate')
+    # x = np.random.randint(0,2**8,size=100000).astype(np.uint32)
+    # xb = bytearray(x)
+    # print('x[:4]: ',x[:4],'xb[:4]: ',xb[:4],'list(xb)[:4]',list(xb)[:4])
+    # for method in ['lzma','bz2']:
+    #     print(method,'undiscretised',entropy_rate(bytearray(x)))
+    #     for discretisation_level in [2**j for j in [1,2,3,5,8,17]]:
+    #         xd = discretise(x,discretisation_level)
+    #         print(method,'discretised',discretisation_level,
+    #         entropy_rate(bytearray(xd), method=method))
+    # tests of dependogram
+    print('\ntests of dependogram')
+    x = arma_generate_sample([1,.5],[1],nsample=10000).astype(np.float64)
+    xb = bytearray(x)
+    print('x[:5]',x[:5])
+    # print(dependogram(x, blocksizes=[1,2,3,100], nshuffles=100, nbins=4, plot=True))
+    # dependogram(x, nshuffles=100, nbins=8, plot=True)
+    # dependogram(x, nshuffles=100, nbins=6, plot=True)
+    dependogram(x, nshuffles=100, nbins=2, plot=False, method='lzma')
+    dependogram(x, nshuffles=100, nbins=2, plot=True, method='bz2')
